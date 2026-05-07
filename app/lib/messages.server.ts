@@ -11,6 +11,7 @@ import type {
 } from "@mariozechner/pi-ai";
 import { db } from "../db/index.server";
 import { chats } from "../db/schema";
+import { resolveSessionFile } from "./agent.server";
 import type { UiBlock, UiMessage } from "./types";
 
 function textFromContent(
@@ -101,8 +102,10 @@ export function toUiMessages(agentMessages: unknown[]): UiMessage[] {
 
 export function loadMessagesForChat(chatId: string): UiMessage[] {
   const chat = db.select().from(chats).where(eq(chats.id, chatId)).get();
-  if (!chat || !chat.sessionFile || !existsSync(chat.sessionFile)) return [];
-  const sm = SessionManager.open(chat.sessionFile);
+  if (!chat) return [];
+  const path = resolveSessionFile(chat.sessionFile);
+  if (!path || !existsSync(path)) return [];
+  const sm = SessionManager.open(path);
   const ctx = sm.buildSessionContext();
   return toUiMessages(ctx.messages as unknown[]);
 }
