@@ -5,3 +5,6 @@
 # React Router
 /.react-router/
 /build/
+
+# Local data (sqlite, JSONL sessions, chat workspaces)
+/data/
