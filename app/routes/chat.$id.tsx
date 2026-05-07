@@ -169,6 +169,13 @@ export default function ChatDetail({ loaderData }: Route.ComponentProps) {
     [model, models],
   );
 
+  const lastAssistantId = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === "assistant") return messages[i].id;
+    }
+    return null;
+  }, [messages]);
+
   async function patchChat(update: {
     title?: string;
     model?: string;
@@ -519,21 +526,13 @@ export default function ChatDetail({ loaderData }: Route.ComponentProps) {
               modelLabel={modelLabel}
               chatId={chatId}
               workspace={workspace}
+              activity={
+                isStreaming && m.id === lastAssistantId
+                  ? { phrase: activityPhrase, visible: activityVisible }
+                  : undefined
+              }
             />
           ))}
-          {isStreaming && (
-            <div className="flex items-center gap-2 pl-1 pt-1 text-xs text-neutral-500">
-              <span className="inline-block w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse shrink-0" />
-              <span
-                className={
-                  "italic transition-opacity duration-300 " +
-                  (activityVisible ? "opacity-100" : "opacity-0")
-                }
-              >
-                {activityPhrase ?? ""}…
-              </span>
-            </div>
-          )}
           {error && (
             <div className="rounded-md border border-red-300 bg-red-50 dark:bg-red-950/40 dark:border-red-900 px-3 py-2 text-sm text-red-700 dark:text-red-300">
               {error}
@@ -758,16 +757,40 @@ function MessageUsage({ usage }: { usage: UsageDelta }) {
   );
 }
 
+function ActivityChip({
+  phrase,
+  visible,
+}: {
+  phrase: string | null;
+  visible: boolean;
+}) {
+  return (
+    <div className="absolute top-2 right-2 flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-neutral-200 dark:border-neutral-800 bg-white/90 dark:bg-neutral-900/90 backdrop-blur-sm text-[11px] text-neutral-600 dark:text-neutral-400 shadow-sm pointer-events-none max-w-[70%]">
+      <span className="inline-block w-1 h-1 bg-emerald-500 rounded-full animate-pulse shrink-0" />
+      <span
+        className={
+          "italic truncate transition-opacity duration-300 " +
+          (visible ? "opacity-100" : "opacity-0")
+        }
+      >
+        {phrase ?? ""}…
+      </span>
+    </div>
+  );
+}
+
 function MessageBubble({
   message,
   modelLabel,
   chatId,
   workspace,
+  activity,
 }: {
   message: UiMessage;
   modelLabel: string;
   chatId: string;
   workspace: string;
+  activity?: { phrase: string | null; visible: boolean };
 }) {
   if (message.role === "user") {
     return (
@@ -780,7 +803,7 @@ function MessageBubble({
   }
   return (
     <div className="flex justify-start">
-      <div className="max-w-[85%] w-full rounded-lg px-4 py-3 text-sm bg-white border border-neutral-200 dark:bg-neutral-900 dark:border-neutral-800 space-y-2">
+      <div className="relative max-w-[85%] w-full rounded-lg px-4 py-3 text-sm bg-white border border-neutral-200 dark:bg-neutral-900 dark:border-neutral-800 space-y-2">
         <div className="text-[10px] uppercase tracking-wider text-neutral-400">
           {modelLabel}
         </div>
@@ -796,6 +819,9 @@ function MessageBubble({
           />
         ))}
         {message.usage && <MessageUsage usage={message.usage} />}
+        {activity && (
+          <ActivityChip phrase={activity.phrase} visible={activity.visible} />
+        )}
       </div>
     </div>
   );
