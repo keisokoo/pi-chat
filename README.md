@@ -16,11 +16,29 @@
 - 사이드바 채팅 목록, 새 채팅 생성/삭제
 - 채팅별 모델 / thinking level 전환 (라이브 적용)
 - 메시지 스트리밍: 텍스트, 생각, 툴 호출/결과를 SSE로 실시간 표시
-- 채팅별 샌드박스 (`./data/workspaces/<chatId>`) 안에서만 도구 실행
+- **토큰/비용 추적** — 메시지별 + 누적 (`input/output/cache read/write`, USD). DB에 영속, 헤더와 어시스턴트 버블에 표시
+- 채팅별 작업 디렉토리 (`./data/workspaces/<chatId>`) — Docker 안에선 추가로 컨테이너 격리
 - 새로고침/서버 재시작 후에도 대화 컨텍스트 복원 (JSONL 기반)
 - 한글 IME 조합 중 Enter 무시 + 응답 끝나면 입력창 자동 포커스
 
-## 빠른 시작
+## 빠른 시작 — Docker (권장)
+
+에이전트의 `bash`/`edit`/`write` 도구는 cwd 샌드박스 밖으로도 나갈 수 있다 (`cd ..`, 절대경로). 따라서 **호스트에서 직접 띄우면 진짜로 시스템을 건드릴 수 있음.** Docker로 격리하는 것이 정상 사용법.
+
+```bash
+echo 'ANTHROPIC_API_KEY=sk-ant-...' > .env
+docker compose up --build      # 첫 실행 (이미지 빌드 포함)
+docker compose up              # 이후 실행
+# → http://localhost:3000
+```
+
+- `./data` 가 컨테이너의 `/app/data`로 마운트됨 (SQLite + JSONL 세션 + 채팅별 샌드박스)
+- 컨테이너 내부의 다른 경로(`/usr`, `/etc` 등)는 ephemeral — 도구가 망가뜨려도 재기동 시 복구
+- 단, 도구가 마운트된 `/app/data`는 손댈 수 있음 (호스트 `./data` 그대로 반영). 채팅 데이터를 잃기 싫으면 가끔 백업.
+
+## 빠른 시작 — 로컬 개발 (UI 작업용)
+
+UI/스타일만 손볼 거면 호스트에서 dev 서버를 띄워도 무방. **단, 이 모드에서는 LLM에 메시지를 보내지 말 것.** 도구가 호스트를 만짐.
 
 ```bash
 npm install
@@ -142,11 +160,41 @@ export const webSearch = defineTool({
 ## 스크립트
 
 ```bash
-npm run dev          # vite + RR 개발 서버
-npm run build        # 프로덕션 빌드
-npm run start        # 빌드된 서버 실행
-npm run typecheck    # react-router typegen + tsc
+npm run dev                      # vite + RR 개발 서버
+npm run build                    # 프로덕션 빌드
+npm run start                    # 빌드된 서버 실행
+npm run typecheck                # react-router typegen + tsc
+
+docker compose up --build        # Docker 격리 실행 (권장)
+docker compose down              # 컨테이너 종료
+docker compose logs -f agent     # 로그 추적
 ```
+
+## 컨테이너에 들어있는 도구
+
+에이전트의 `bash` 도구가 호출할 수 있도록 미리 깔아둔 것들. 모두 [Dockerfile](Dockerfile)의 `apk add` 한 블록에 묶여 있어서 추가/제거가 한 곳에서 됨.
+
+| 카테고리 | 패키지 |
+|---|---|
+| Shell / 런타임 | `bash`, `python3`, `py3-pip` |
+| 데이터/텍스트 | `jq` (JSON), `yq` (YAML), `xmlstarlet` (XML), `miller` (mlr — CSV/TSV/JSON), `gawk` |
+| 네트워크 | `curl`, `wget`, `openssl`, `openssh`, `netcat-openbsd`, `nmap`, `bind-tools` (dig/nslookup) |
+| 빌드/컴파일 | `make`, `gcc`, `g++`, `musl-dev`, `cmake` |
+| VCS | `git` (private repo는 `data/` 아래 ssh 키 마운트 필요) |
+| 압축/파일 | `zip`, `unzip`, `xz`, `p7zip` (7z), `rsync`, `patch` |
+| DB 클라이언트 | `sqlite`, `postgresql-client` (psql), `mysql-client` |
+| 미디어 | `ffmpeg`, `imagemagick` (magick), `exiftool` |
+| 문서 변환 | `pandoc`, `ghostscript` (gs) |
+| 시스템 유틸 | `htop`, `tree`, `vim`, `tzdata`, `ca-certificates`, `tini` |
+
+이미지 사이즈는 ~1.5GB. 도구 추가/제거는 [Dockerfile](Dockerfile)의 리스트 알파벳 순서 유지하고 `docker compose up --build`.
+
+## 보안 / 격리 메모
+
+- 빌트인 `bash`는 cwd 밖으로 자유롭게 이동/실행 가능. **반드시 Docker 안에서 운용**할 것.
+- 컨테이너는 비루트 유저(`piuser`, uid 10001)로 실행되며, `data/` 외부는 컨테이너 재기동 시 ephemeral.
+- 도구가 마운트된 `./data` 는 망가뜨릴 수 있음 — 필요 시 별도 볼륨/백업으로 보호.
+- 멀티유저/인증 없음. 외부 네트워크 노출 시 reverse proxy 앞단에 인증 붙일 것.
 
 ## 알려진 한계
 

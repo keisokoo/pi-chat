@@ -7,8 +7,10 @@ import {
   AVAILABLE_MODELS,
   THINKING_LEVELS,
   disposeSession,
+  resolveSessionFile,
   updateSessionModel,
   updateSessionThinking,
+  workspaceFor,
 } from "../lib/agent.server";
 import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
 
@@ -22,8 +24,9 @@ export async function action({ request, params }: Route.ActionArgs) {
     await disposeSession(id);
     db.delete(chats).where(eq(chats.id, id)).run();
     try {
-      if (chat.sessionFile) rmSync(chat.sessionFile, { force: true });
-      rmSync(chat.workspace, { recursive: true, force: true });
+      const sessionPath = resolveSessionFile(chat.sessionFile);
+      if (sessionPath) rmSync(sessionPath, { force: true });
+      rmSync(workspaceFor(id), { recursive: true, force: true });
     } catch {
       // ignore cleanup errors
     }

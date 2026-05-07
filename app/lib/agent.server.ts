@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync } from "node:fs";
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
 import { eq } from "drizzle-orm";
 import {
   createAgentSession,
@@ -14,7 +14,7 @@ import { chats } from "../db/schema";
 const sessions = new Map<string, Promise<AgentSession>>();
 
 const DATA_DIR = resolve(process.cwd(), "data");
-const SESSIONS_DIR = resolve(DATA_DIR, "sessions");
+export const SESSIONS_DIR = resolve(DATA_DIR, "sessions");
 const WORKSPACES_DIR = resolve(DATA_DIR, "workspaces");
 
 mkdirSync(SESSIONS_DIR, { recursive: true });
@@ -42,6 +42,11 @@ export function workspaceFor(chatId: string): string {
   return resolve(WORKSPACES_DIR, chatId);
 }
 
+export function resolveSessionFile(sessionFile: string | null): string | null {
+  if (!sessionFile) return null;
+  return resolve(SESSIONS_DIR, sessionFile);
+}
+
 export async function getOrCreateSession(
   chatId: string,
 ): Promise<AgentSession> {
@@ -52,15 +57,17 @@ export async function getOrCreateSession(
     const chat = db.select().from(chats).where(eq(chats.id, chatId)).get();
     if (!chat) throw new Error(`Chat ${chatId} not found`);
 
-    mkdirSync(chat.workspace, { recursive: true });
+    const workspace = workspaceFor(chatId);
+    mkdirSync(workspace, { recursive: true });
 
+    const absSessionFile = resolveSessionFile(chat.sessionFile);
     const sessionManager =
-      chat.sessionFile && existsSync(chat.sessionFile)
-        ? SessionManager.open(chat.sessionFile, SESSIONS_DIR, chat.workspace)
-        : SessionManager.create(chat.workspace, SESSIONS_DIR);
+      absSessionFile && existsSync(absSessionFile)
+        ? SessionManager.open(absSessionFile, SESSIONS_DIR, workspace)
+        : SessionManager.create(workspace, SESSIONS_DIR);
 
     const { session } = await createAgentSession({
-      cwd: chat.workspace,
+      cwd: workspace,
       model: getModel(
         "anthropic",
         chat.model as (typeof AVAILABLE_MODELS)[number]["id"],
@@ -69,11 +76,14 @@ export async function getOrCreateSession(
       sessionManager,
     });
 
-    if (session.sessionFile && session.sessionFile !== chat.sessionFile) {
-      db.update(chats)
-        .set({ sessionFile: session.sessionFile, updatedAt: new Date() })
-        .where(eq(chats.id, chatId))
-        .run();
+    if (session.sessionFile) {
+      const base = basename(session.sessionFile);
+      if (base !== chat.sessionFile) {
+        db.update(chats)
+          .set({ sessionFile: base, updatedAt: new Date() })
+          .where(eq(chats.id, chatId))
+          .run();
+      }
     }
 
     return session;
@@ -105,7 +115,9 @@ export async function updateSessionModel(
   modelId: string,
 ): Promise<void> {
   const session = await getOrCreateSession(chatId);
-  await session.setModel(getModel("anthropic", modelId as never));
+  await session.setModel(
+    getModel("anthropic", modelId as (typeof AVAILABLE_MODELS)[number]["id"]),
+  );
 }
 
 export async function updateSessionThinking(

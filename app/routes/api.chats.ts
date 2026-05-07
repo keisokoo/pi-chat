@@ -7,21 +7,21 @@ import {
   AVAILABLE_MODELS,
   DEFAULT_MODEL,
   DEFAULT_THINKING,
-  workspaceFor,
 } from "../lib/agent.server";
 
 export async function loader(_: Route.LoaderArgs) {
-  const rows = db
-    .select()
-    .from(chats)
-    .orderBy(desc(chats.updatedAt))
-    .all();
+  const rows = db.select().from(chats).orderBy(desc(chats.updatedAt)).all();
   return Response.json({
     chats: rows.map((r) => ({
       id: r.id,
       title: r.title,
       model: r.model,
       thinkingLevel: r.thinkingLevel,
+      tokensInput: r.tokensInput,
+      tokensOutput: r.tokensOutput,
+      cacheRead: r.cacheRead,
+      cacheWrite: r.cacheWrite,
+      costUsd: r.costUsd,
       createdAt: r.createdAt.getTime(),
       updatedAt: r.updatedAt.getTime(),
     })),
@@ -57,7 +57,6 @@ export async function action({ request }: Route.ActionArgs) {
       title,
       model,
       thinkingLevel,
-      workspace: workspaceFor(id),
       createdAt: now,
       updatedAt: now,
     })
@@ -68,6 +67,11 @@ export async function action({ request }: Route.ActionArgs) {
     title,
     model,
     thinkingLevel,
+    tokensInput: 0,
+    tokensOutput: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    costUsd: 0,
     createdAt: now.getTime(),
     updatedAt: now.getTime(),
   });

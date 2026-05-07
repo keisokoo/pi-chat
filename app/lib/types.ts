@@ -1,3 +1,20 @@
+export interface UsageDelta {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  total: number;
+  costUsd: number;
+}
+
+export interface SessionTotals {
+  tokensInput: number;
+  tokensOutput: number;
+  cacheRead: number;
+  cacheWrite: number;
+  costUsd: number;
+}
+
 export type UiBlock =
   | { type: "text"; text: string }
   | { type: "thinking"; text: string }
@@ -18,6 +35,7 @@ export type UiMessage =
       role: "assistant";
       blocks: UiBlock[];
       timestamp: number;
+      usage?: UsageDelta;
     };
 
 export type ServerEvent =
@@ -39,6 +57,8 @@ export type ServerEvent =
       result: string;
       isError: boolean;
     }
+  | { type: "assistant_usage"; id: string; usage: UsageDelta }
+  | { type: "session_totals"; totals: SessionTotals }
   | { type: "done" }
   | { type: "error"; message: string };
 

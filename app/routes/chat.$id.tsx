@@ -9,7 +9,13 @@ import {
   THINKING_LEVELS,
 } from "../lib/agent.server";
 import { loadMessagesForChat } from "../lib/messages.server";
-import type { ServerEvent, UiBlock, UiMessage } from "../lib/types";
+import type {
+  ServerEvent,
+  SessionTotals,
+  UiBlock,
+  UiMessage,
+  UsageDelta,
+} from "../lib/types";
 
 export async function loader({ params }: Route.LoaderArgs) {
   const id = params.id;
@@ -24,6 +30,13 @@ export async function loader({ params }: Route.LoaderArgs) {
       model: chat.model,
       thinkingLevel: chat.thinkingLevel,
     },
+    totals: {
+      tokensInput: chat.tokensInput,
+      tokensOutput: chat.tokensOutput,
+      cacheRead: chat.cacheRead,
+      cacheWrite: chat.cacheWrite,
+      costUsd: chat.costUsd,
+    } satisfies SessionTotals,
     messages,
     models: AVAILABLE_MODELS as unknown as { id: string; label: string }[],
     thinkingLevels: THINKING_LEVELS as readonly string[],
@@ -58,9 +71,16 @@ function ensureAssistantBlock(
 }
 
 export default function ChatDetail({ loaderData }: Route.ComponentProps) {
-  const { chat, models, thinkingLevels, messages: initialMessages } = loaderData;
+  const {
+    chat,
+    models,
+    thinkingLevels,
+    messages: initialMessages,
+    totals: initialTotals,
+  } = loaderData;
   const ctx = useOutletContext<OutletCtx>();
   const [messages, setMessages] = useState<UiMessage[]>(initialMessages);
+  const [totals, setTotals] = useState<SessionTotals>(initialTotals);
   const [title, setTitle] = useState(chat.title);
   const [model, setModel] = useState(chat.model);
   const [thinking, setThinking] = useState(chat.thinkingLevel);
@@ -75,11 +95,19 @@ export default function ChatDetail({ loaderData }: Route.ComponentProps) {
 
   useEffect(() => {
     setMessages(initialMessages);
+    setTotals(initialTotals);
     setTitle(chat.title);
     setModel(chat.model);
     setThinking(chat.thinkingLevel);
     setError(null);
-  }, [chatId, chat.title, chat.model, chat.thinkingLevel, initialMessages]);
+  }, [
+    chatId,
+    chat.title,
+    chat.model,
+    chat.thinkingLevel,
+    initialMessages,
+    initialTotals,
+  ]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
@@ -113,6 +141,20 @@ export default function ChatDetail({ loaderData }: Route.ComponentProps) {
   }
 
   function applyEvent(event: ServerEvent) {
+    if (event.type === "session_totals") {
+      setTotals(event.totals);
+      return;
+    }
+    if (event.type === "assistant_usage") {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === event.id && m.role === "assistant"
+            ? { ...m, usage: event.usage }
+            : m,
+        ),
+      );
+      return;
+    }
     setMessages((prev) => {
       if (event.type === "assistant_start") {
         return [
@@ -336,6 +378,7 @@ export default function ChatDetail({ loaderData }: Route.ComponentProps) {
             </option>
           ))}
         </select>
+        <UsageBadge totals={totals} />
       </header>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-6">
@@ -418,6 +461,61 @@ export default function ChatDetail({ loaderData }: Route.ComponentProps) {
   );
 }
 
+function formatNumber(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
+}
+
+function formatCost(usd: number): string {
+  if (usd === 0) return "$0";
+  if (usd < 0.01) return `$${usd.toFixed(4)}`;
+  if (usd < 1) return `$${usd.toFixed(3)}`;
+  return `$${usd.toFixed(2)}`;
+}
+
+function UsageBadge({ totals }: { totals: SessionTotals }) {
+  const empty =
+    totals.tokensInput === 0 &&
+    totals.tokensOutput === 0 &&
+    totals.cacheRead === 0 &&
+    totals.cacheWrite === 0;
+  if (empty) return null;
+  return (
+    <div
+      className="text-[11px] font-mono text-neutral-600 dark:text-neutral-400 flex items-center gap-2 px-2 py-1 rounded border border-neutral-200 dark:border-neutral-800"
+      title={`input ${totals.tokensInput} · output ${totals.tokensOutput} · cache r ${totals.cacheRead} · cache w ${totals.cacheWrite} · ${formatCost(totals.costUsd)}`}
+    >
+      <span>↑{formatNumber(totals.tokensInput)}</span>
+      <span>↓{formatNumber(totals.tokensOutput)}</span>
+      {totals.cacheRead > 0 && (
+        <span className="text-emerald-600 dark:text-emerald-400">
+          ⚡{formatNumber(totals.cacheRead)}
+        </span>
+      )}
+      <span className="text-neutral-900 dark:text-neutral-200 font-semibold">
+        {formatCost(totals.costUsd)}
+      </span>
+    </div>
+  );
+}
+
+function MessageUsage({ usage }: { usage: UsageDelta }) {
+  return (
+    <div
+      className="text-[10px] font-mono text-neutral-400 flex gap-3 pt-1 border-t border-neutral-100 dark:border-neutral-800"
+      title={`input ${usage.input} · output ${usage.output} · cache r ${usage.cacheRead} · cache w ${usage.cacheWrite}`}
+    >
+      <span>↑{formatNumber(usage.input)}</span>
+      <span>↓{formatNumber(usage.output)}</span>
+      {usage.cacheRead > 0 && (
+        <span className="text-emerald-500">⚡{formatNumber(usage.cacheRead)}</span>
+      )}
+      <span>{formatCost(usage.costUsd)}</span>
+    </div>
+  );
+}
+
 function MessageBubble({
   message,
   modelLabel,
@@ -446,6 +544,7 @@ function MessageBubble({
         {message.blocks.map((b, i) => (
           <BlockView key={i} block={b} />
         ))}
+        {message.usage && <MessageUsage usage={message.usage} />}
       </div>
     </div>
   );

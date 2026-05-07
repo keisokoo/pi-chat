@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
+import type { AssistantMessage } from "@mariozechner/pi-ai";
 import type { Route } from "./+types/api.chats.$id.message";
 import { db } from "../db/index.server";
 import { chats } from "../db/schema";
@@ -74,12 +75,33 @@ export async function action({ request, params }: Route.ActionArgs) {
       };
 
       let currentAssistantId: string | null = null;
+      const assistantIds = new Map<AssistantMessage, string>();
 
       const unsubscribe = session.subscribe((event) => {
         if (event.type === "message_start") {
           if (event.message.role === "assistant") {
             currentAssistantId = randomUUID();
+            assistantIds.set(event.message, currentAssistantId);
             send({ type: "assistant_start", id: currentAssistantId });
+          }
+        } else if (event.type === "message_end") {
+          if (event.message.role === "assistant") {
+            const id = assistantIds.get(event.message);
+            const u = event.message.usage;
+            if (id && u) {
+              send({
+                type: "assistant_usage",
+                id,
+                usage: {
+                  input: u.input,
+                  output: u.output,
+                  cacheRead: u.cacheRead,
+                  cacheWrite: u.cacheWrite,
+                  total: u.totalTokens,
+                  costUsd: u.cost.total,
+                },
+              });
+            }
           }
         } else if (event.type === "message_update") {
           if (!currentAssistantId) return;
@@ -122,6 +144,23 @@ export async function action({ request, params }: Route.ActionArgs) {
             isError: event.isError,
           });
         } else if (event.type === "agent_end") {
+          try {
+            const stats = session.getSessionStats();
+            const totals = {
+              tokensInput: stats.tokens.input,
+              tokensOutput: stats.tokens.output,
+              cacheRead: stats.tokens.cacheRead,
+              cacheWrite: stats.tokens.cacheWrite,
+              costUsd: stats.cost,
+            };
+            db.update(chats)
+              .set({ ...totals, updatedAt: new Date() })
+              .where(eq(chats.id, chatId))
+              .run();
+            send({ type: "session_totals", totals });
+          } catch {
+            // stats unavailable; skip
+          }
           send({ type: "done" });
           unsubscribe();
           close();

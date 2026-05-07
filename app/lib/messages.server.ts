@@ -63,11 +63,22 @@ export function toUiMessages(agentMessages: unknown[]): UiMessage[] {
           });
         }
       }
+      const u = am.usage;
       out.push({
         id: `a-${am.timestamp}-${counter++}`,
         role: "assistant",
         blocks,
         timestamp: am.timestamp,
+        usage: u
+          ? {
+              input: u.input,
+              output: u.output,
+              cacheRead: u.cacheRead,
+              cacheWrite: u.cacheWrite,
+              total: u.totalTokens,
+              costUsd: u.cost?.total ?? 0,
+            }
+          : undefined,
       });
     } else if (m.role === "toolResult") {
       const tr = m as ToolResultMessage;

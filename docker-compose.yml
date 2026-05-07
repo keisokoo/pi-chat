@@ -1,0 +1,15 @@
+services:
+  agent:
+    build: .
+    image: pi-chat-agent:latest
+    container_name: pi-chat-agent
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    volumes:
+      # Chat metadata (SQLite) + per-chat JSONL sessions + per-chat sandbox
+      # workspaces. The agent's bash/edit/write tools can only touch this
+      # mount + the (ephemeral) container filesystem.
+      - ./data:/app/data
+    restart: unless-stopped
