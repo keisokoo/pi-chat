@@ -10,6 +10,7 @@ import {
   workspaceFor,
 } from "../lib/agent.server";
 import { loadMessagesForChat } from "../lib/messages.server";
+import { pickRunningPhrase } from "../lib/phrases";
 import type { WorkspaceFile } from "./api.chats.$id.files";
 import type {
   ServerEvent,
@@ -288,7 +289,11 @@ export default function ChatDetail({ loaderData }: Route.ComponentProps) {
           const blocks = m.blocks.slice();
           const b = blocks[idx];
           if (b.type === "tool") {
-            blocks[idx] = { ...b, runningSince: event.startedAt };
+            blocks[idx] = {
+              ...b,
+              runningSince: event.startedAt,
+              runningPhrase: b.runningPhrase ?? pickRunningPhrase(),
+            };
           }
           return { ...m, blocks };
         });
@@ -794,6 +799,12 @@ function ElapsedSince({ since }: { since: number }) {
   return <span className="tabular-nums">{s}s</span>;
 }
 
+function clipToLastLines(s: string, n: number): string {
+  const lines = s.split("\n");
+  if (lines.length <= n) return s;
+  return `…\n${lines.slice(-n).join("\n")}`;
+}
+
 const URL_RE = /(https?:\/\/[^\s<>"'`]+|\/api\/chats\/[^\s<>"'`]+)/g;
 
 function LinkifiedText({ text }: { text: string }) {
@@ -902,7 +913,6 @@ function BlockView({
           ? "border-red-300 dark:border-red-900 bg-red-50 dark:bg-red-950/40"
           : "border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-950")
       }
-      open={phase !== "done"}
     >
       <summary className="cursor-pointer px-2 py-1 font-mono flex items-center gap-2">
         {phase !== "done" && (
@@ -910,9 +920,14 @@ function BlockView({
         )}
         <span className="font-semibold">{block.name || "tool"}</span>
         {summary && (
-          <span className="text-neutral-500 truncate">{summary}</span>
+          <span className="text-neutral-500 truncate min-w-0">{summary}</span>
         )}
-        <span className="ml-auto flex items-center gap-2 text-neutral-400">
+        <span className="ml-auto flex items-center gap-2 text-neutral-400 shrink-0">
+          {phase === "running" && (
+            <span className="italic text-neutral-500">
+              {block.runningPhrase ?? "실행 중"}
+            </span>
+          )}
           {phase === "running" && block.runningSince && (
             <ElapsedSince since={block.runningSince} />
           )}
@@ -965,10 +980,18 @@ function BlockView({
         {(block.result ?? block.partial) && (
           <div>
             <div className="text-neutral-500 mb-1">
-              {block.result ? "result" : "output (streaming)"}
+              {block.result
+                ? "result"
+                : `output (streaming, last 5 lines)`}
             </div>
             <pre className="whitespace-pre-wrap font-mono">
-              <LinkifiedText text={(block.result ?? block.partial) as string} />
+              <LinkifiedText
+                text={
+                  block.result
+                    ? block.result
+                    : clipToLastLines(block.partial as string, 5)
+                }
+              />
             </pre>
           </div>
         )}

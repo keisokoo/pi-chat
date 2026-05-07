@@ -29,6 +29,8 @@ export type UiBlock =
       argsBuilding?: string;
       /** Set when tool_running arrives (epoch ms). */
       runningSince?: number;
+      /** Stable witty phrase shown while the tool is executing. */
+      runningPhrase?: string;
       result?: string;
       partial?: string;
       isError?: boolean;
