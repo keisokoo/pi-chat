@@ -120,6 +120,23 @@ export async function action({ request, params }: Route.ActionArgs) {
               index: inner.contentIndex,
               delta: inner.delta,
             });
+          } else if (inner.type === "toolcall_start") {
+            const block = inner.partial.content[inner.contentIndex];
+            const name =
+              block && block.type === "toolCall" ? block.name : "";
+            send({
+              type: "tool_call_start",
+              id: currentAssistantId,
+              index: inner.contentIndex,
+              name,
+            });
+          } else if (inner.type === "toolcall_delta") {
+            send({
+              type: "tool_call_delta",
+              id: currentAssistantId,
+              index: inner.contentIndex,
+              delta: inner.delta,
+            });
           } else if (inner.type === "toolcall_end") {
             send({
               type: "tool_call",
@@ -130,6 +147,12 @@ export async function action({ request, params }: Route.ActionArgs) {
               args: inner.toolCall.arguments,
             });
           }
+        } else if (event.type === "tool_execution_start") {
+          send({
+            type: "tool_running",
+            toolCallId: event.toolCallId,
+            startedAt: Date.now(),
+          });
         } else if (event.type === "tool_execution_update") {
           send({
             type: "tool_partial",

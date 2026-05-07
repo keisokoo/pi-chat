@@ -20,9 +20,15 @@ export type UiBlock =
   | { type: "thinking"; text: string }
   | {
       type: "tool";
-      toolCallId: string;
+      /** Final id, only available after tool_call (end). */
+      toolCallId?: string;
       name: string;
-      args: unknown;
+      /** Final parsed args once toolcall_end arrives. */
+      args?: unknown;
+      /** Raw JSON text accumulated during toolcall_delta. */
+      argsBuilding?: string;
+      /** Set when tool_running arrives (epoch ms). */
+      runningSince?: number;
       result?: string;
       partial?: string;
       isError?: boolean;
@@ -42,6 +48,8 @@ export type ServerEvent =
   | { type: "assistant_start"; id: string }
   | { type: "text_delta"; id: string; index: number; delta: string }
   | { type: "thinking_delta"; id: string; index: number; delta: string }
+  | { type: "tool_call_start"; id: string; index: number; name: string }
+  | { type: "tool_call_delta"; id: string; index: number; delta: string }
   | {
       type: "tool_call";
       id: string;
@@ -50,6 +58,7 @@ export type ServerEvent =
       name: string;
       args: unknown;
     }
+  | { type: "tool_running"; toolCallId: string; startedAt: number }
   | { type: "tool_partial"; toolCallId: string; partial: string }
   | {
       type: "tool_result";

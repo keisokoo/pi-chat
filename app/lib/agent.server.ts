@@ -10,6 +10,7 @@ import { getModel } from "@mariozechner/pi-ai";
 import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
 import { db } from "../db/index.server";
 import { chats } from "../db/schema";
+import { createShareFileTool } from "./tools/share-file.server";
 
 const sessions = new Map<string, Promise<AgentSession>>();
 
@@ -74,6 +75,7 @@ export async function getOrCreateSession(
       ),
       thinkingLevel: chat.thinkingLevel as ThinkingLevel,
       sessionManager,
+      customTools: [createShareFileTool(chatId, workspace)],
     });
 
     if (session.sessionFile) {
