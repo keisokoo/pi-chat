@@ -94,6 +94,8 @@ export default function ChatDetail({ loaderData }: Route.ComponentProps) {
   const [error, setError] = useState<string | null>(null);
   const [filesOpen, setFilesOpen] = useState(false);
   const [files, setFiles] = useState<WorkspaceFile[]>([]);
+  const [activityPhrase, setActivityPhrase] = useState<string | null>(null);
+  const [activityVisible, setActivityVisible] = useState(true);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -130,6 +132,29 @@ export default function ChatDetail({ loaderData }: Route.ComponentProps) {
     initialMessages,
     initialTotals,
   ]);
+
+  useEffect(() => {
+    if (!isStreaming) {
+      setActivityPhrase(null);
+      setActivityVisible(true);
+      return;
+    }
+    setActivityPhrase(pickRunningPhrase());
+    setActivityVisible(true);
+    let pending: ReturnType<typeof setTimeout> | null = null;
+    const cycle = setInterval(() => {
+      setActivityVisible(false);
+      pending = setTimeout(() => {
+        setActivityPhrase(pickRunningPhrase());
+        setActivityVisible(true);
+        pending = null;
+      }, 300);
+    }, 2500);
+    return () => {
+      clearInterval(cycle);
+      if (pending) clearTimeout(pending);
+    };
+  }, [isStreaming]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
@@ -496,6 +521,19 @@ export default function ChatDetail({ loaderData }: Route.ComponentProps) {
               workspace={workspace}
             />
           ))}
+          {isStreaming && (
+            <div className="flex items-center gap-2 pl-1 pt-1 text-xs text-neutral-500">
+              <span className="inline-block w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse shrink-0" />
+              <span
+                className={
+                  "italic transition-opacity duration-300 " +
+                  (activityVisible ? "opacity-100" : "opacity-0")
+                }
+              >
+                {activityPhrase ?? ""}…
+              </span>
+            </div>
+          )}
           {error && (
             <div className="rounded-md border border-red-300 bg-red-50 dark:bg-red-950/40 dark:border-red-900 px-3 py-2 text-sm text-red-700 dark:text-red-300">
               {error}
